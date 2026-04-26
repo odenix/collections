@@ -4,9 +4,6 @@ import mill._
 import mill.javalib.DepSyntax
 
 object Versions {
-  // keep in sync with `//| mill-jvm-version:` directive in build.mill
-  val jvmMill = "temurin:21" 
-  
   val jvmToolchain = "temurin:25"
   val jvmTarget = "21"
 }

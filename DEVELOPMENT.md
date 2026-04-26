@@ -24,12 +24,12 @@ Performance parity is checked with `benchmarks.compareFast`.
 Common tasks:
 
 ```sh
-./millw compile
-./millw test
-./millw test.extra
-./millw build
-./millw publishLocal
-./millw initUpstream
+./mill compile
+./mill test
+./mill test.extra
+./mill build
+./mill publishLocal
+./mill initUpstream
 ```
 
 `test` runs the ported upstream tests. `test.extra` runs downstream-only tests.
@@ -37,7 +37,7 @@ Common tasks:
 Run longer randomized downstream tests explicitly:
 
 ```sh
-./millw test.extra.randomized
+./mill test.extra.randomized
 ```
 
 Randomized test sizing is configured in `test/extra/randomized/package.mill`.
@@ -50,10 +50,10 @@ Benchmarks are JMH benchmarks under `benchmarks/src`. They are opt-in and are no
 Benchmark tasks:
 
 ```sh
-./millw benchmarks.runSmoke
-./millw benchmarks.runFast
-./millw benchmarks.compareFast
-./millw benchmarks.runFull
+./mill benchmarks.runSmoke
+./mill benchmarks.runFast
+./mill benchmarks.compareFast
+./mill benchmarks.runFull
 ```
 
 `runSmoke` is a short wiring check. `runFast` is the upstream-aligned fast JVM suite.

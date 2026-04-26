@@ -7,11 +7,11 @@ on:
 
 jobs:
   build:
-    name: Mill Build
+    name: Dev Build (Linux)
     runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@v5
       - uses: coursier/cache-action@v8
-      - run: ./millw build
+      - run: ./mill build
