@@ -15,8 +15,7 @@ Performance parity is checked with `benchmarks.compareFast`.
 ## Repository Layout
 
 - `src/` contains the Java port.
-- `test/` contains tests ported from upstream.
-- `testDownstream/` contains downstream-only tests. `testDownstream/randomized/` contains opt-in randomized trace tests.
+- `test/` contains tests ported from upstream. `test/extra/` contains downstream-only tests, including opt-in randomized trace tests.
 - `upstream/` is a git submodule pointing at the original Kotlin project.
 - `docs/porting.md`, `docs/porting-implementation.md`, and `docs/porting-deviations.md` document the porting rules.
 
@@ -27,21 +26,21 @@ Common tasks:
 ```sh
 ./millw compile
 ./millw test
-./millw testDownstream
+./millw test.extra
 ./millw build
 ./millw publishLocal
 ./millw initUpstream
 ```
 
-`test` runs the ported upstream tests. `testDownstream` runs downstream-only tests.
+`test` runs the ported upstream tests. `test.extra` runs downstream-only tests.
 
 Run longer randomized downstream tests explicitly:
 
 ```sh
-./millw testDownstream.randomized
+./millw test.extra.randomized
 ```
 
-Randomized test sizing is configured in `testDownstream/randomized/package.mill`.
+Randomized test sizing is configured in `test/extra/randomized/package.mill`.
 Failure traces are written under the randomized module's Mill output directory.
 
 ## Benchmarks

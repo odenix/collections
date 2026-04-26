@@ -66,7 +66,7 @@ object `package` extends JavaModule with PublishModule with SpotlessModule {
   def build(evaluator: Evaluator) = Task.Command(exclusive = true) {
     // Use public Mill task selectors to aggregate sibling package.mill modules
     // without relying on generated Scala names.
-    val result = evaluator.evaluate(Seq("spotlessCheck", "test", "testDownstream"), SelectMode.Multi).get
+    val result = evaluator.evaluate(Seq("spotlessCheck", "test", "test.extra"), SelectMode.Multi).get
     result.values.get
     ()
   }
@@ -85,6 +85,7 @@ object `package` extends JavaModule with PublishModule with SpotlessModule {
         | */""".stripMargin
     val delimiter = "(?m)^package\\b"
     val headerExcludes = Seq("regex:.*package-info\\.java", "regex:.*module-info\\.java")
+    val portedExcludes = headerExcludes ++ Seq("regex:test[\\\\/]extra[\\\\/].*\\.java")
     val javaImportSteps = Seq(
       Format.RemoveUnusedImports(),
       Format.ImportOrder(
@@ -107,7 +108,7 @@ object `package` extends JavaModule with PublishModule with SpotlessModule {
           "regex:test[\\\\/].*\\.java",
           "regex:benchmarks[\\\\/].*\\.java"
         ),
-        excludes = headerExcludes,
+        excludes = portedExcludes,
         lineEnding = "GIT_ATTRIBUTES_FAST_ALLSAME",
         encoding = "UTF-8",
         suppressions = Seq.empty
@@ -116,7 +117,7 @@ object `package` extends JavaModule with PublishModule with SpotlessModule {
         steps =
           Seq(Format.LicenseHeader(delimiter, Format.ContentOrFile(content = downstreamHeader))) ++
             javaImportSteps,
-        includes = Seq("regex:testDownstream[\\\\/].*\\.java"),
+        includes = Seq("regex:test[\\\\/]extra[\\\\/].*\\.java"),
         excludes = headerExcludes,
         lineEnding = "GIT_ATTRIBUTES_FAST_ALLSAME",
         encoding = "UTF-8",

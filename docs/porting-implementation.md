@@ -72,7 +72,7 @@ Implementation-level conventions for the Java port. Public API rules live in [po
 
 7. When upstream tests collection views, keep the Java port testing views directly. Do not materialize views into JDK collections unless upstream also materializes them or Java has no direct equivalent. If cross-type equality is unavailable because port types do not extend JDK collection interfaces, translate the assertion into direct size, containment, and iteration checks over the original view.
 
-8. Put permanent downstream-only tests in `testDownstream` under `testDownstream/src`, using packages under `tests`.
+8. Put permanent downstream-only tests in `test/extra` under `test/extra/src`, using packages under `tests`.
 
 9. Add upstream source links only when the port is non-obvious, when a concrete deviation is being documented, or when a Java helper bridges missing Kotlin stdlib behavior. Do not add per-method links by default.
 

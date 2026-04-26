@@ -1,4 +1,4 @@
-package build.testDownstream.randomized
+package build.test.extra.randomized
 
 import java.time.Instant
 import mill._

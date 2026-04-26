@@ -75,7 +75,7 @@ Do not reformat ported code bodies as part of header maintenance. The formatter 
 3. Kotlin `internal` declarations may translate to Java `public` when required for upstream-aligned structure; otherwise package-private is fine. JPMS keeps non-exported packages internal to consumers.
 4. The Java port uses the package prefix `org.odenix.collections` instead of upstream's `kotlinx.collections.immutable`.
 5. The JPMS descriptor lives at `src/module-info.java` and exports only the public API package.
-6. Keep downstream-only tests in `testDownstream` under `testDownstream/src`; keep `test` focused on ported upstream tests.
+6. Keep downstream-only tests in `test/extra` under `test/extra/src`; keep `test` focused on ported upstream tests.
 
 ## Exclusions
 

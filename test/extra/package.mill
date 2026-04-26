@@ -1,4 +1,4 @@
-package build.testDownstream
+package build.test.extra
 
 import mill._
 
