@@ -16,5 +16,11 @@ jobs:
       - name: Cache Coursier
         uses: coursier/cache-action@v8
 
+      - name: Cache Mill
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/mill
+          key: mill-${{ runner.os }}-${{ hashFiles('millw', '.mill-version', 'build.mill', 'build.mill.yaml') }}
+
       - name: Build (Mill)
         run: ./millw build
