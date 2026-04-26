@@ -1,0 +1,131 @@
+//| mill-version: 1.1.5
+//| mill-jvm-version: temurin:21
+package build
+
+import mill._
+import mill.api.Evaluator
+import mill.api.daemon.SelectMode
+import mill.javalib._
+import mill.javalib.publish._
+import mill.javalib.spotless.{Format, SpotlessModule}
+
+object `package` extends JavaModule with PublishModule with SpotlessModule {
+  trait CollectionsTests extends JavaTests with TestModule.Junit6 {
+    def mvnDeps = super.mvnDeps() ++ Seq(
+      Deps.junit
+    )
+
+    def forkArgs = super.forkArgs() ++ Seq("-ea")
+  }
+
+  def mvnDeps = super.mvnDeps() ++ Seq(
+    Deps.jspecify
+  )
+
+  def jvmVersion = Versions.jvmToolchain
+
+  def javacOptions = Task {
+    Seq(
+      "--release",
+      Versions.jvmTarget,
+      "-proc:none",
+      "--module-path",
+      resolvedMvnDeps().map(_.path.toString).mkString(java.io.File.pathSeparator)
+    )
+  }
+
+  def javadocOptions = Task {
+    super.javadocOptions() ++ Seq(
+      "--module-path",
+      resolvedMvnDeps().map(_.path.toString).mkString(java.io.File.pathSeparator)
+    )
+  }
+
+  def publishVersion = "0.1.0-SNAPSHOT"
+
+  def artifactName = "collections"
+
+  def pomSettings = PomSettings(
+    description = "A persistent collection library for Java 21+.",
+    organization = "org.odenix",
+    url = "https://github.com/odenix/collections",
+    licenses = Seq(License.`Apache-2.0`),
+    versionControl = VersionControl.github("odenix", "collections"),
+    developers = Seq(Developer("odenix", "Odenix", "https://github.com/odenix"))
+  )
+
+  def initUpstream() = Task.Command {
+    os.proc("git", "submodule", "update", "--init", "--recursive")
+      .call(cwd = os.pwd)
+  }
+
+  def spotlessCheck() = Task.Command {
+    spotless(mainargs.Flag(true))()
+  }
+
+  def build(evaluator: Evaluator) = Task.Command(exclusive = true) {
+    // Use public Mill task selectors to aggregate sibling package.mill modules
+    // without relying on generated Scala names.
+    val result = evaluator.evaluate(Seq("spotlessCheck", "test", "testDownstream"), SelectMode.Multi).get
+    result.values.get
+    ()
+  }
+
+  override def spotlessFormats = Task.Input {
+    val portedHeader =
+      """/*
+        | * SPDX-License-Identifier: Apache-2.0
+        | * Copyright 2020 JetBrains s.r.o.
+        | * Copyright 2026 The Odenix Collections Authors
+        | */""".stripMargin
+    val downstreamHeader =
+      """/*
+        | * SPDX-License-Identifier: Apache-2.0
+        | * Copyright 2026 The Odenix Collections Authors
+        | */""".stripMargin
+    val delimiter = "(?m)^package\\b"
+    val headerExcludes = Seq("regex:.*package-info\\.java", "regex:.*module-info\\.java")
+    val javaImportSteps = Seq(
+      Format.RemoveUnusedImports(),
+      Format.ImportOrder(
+        importOrder = Seq("java", "javax", "org", ""),
+        wildcardsLast = true,
+        semanticSort = false,
+        treatAsPackage = Set.empty,
+        treatAsClass = Set.empty,
+        forJava = true
+      )
+    )
+
+    Seq(
+      Format(
+        steps =
+          Seq(Format.LicenseHeader(delimiter, Format.ContentOrFile(content = portedHeader))) ++
+            javaImportSteps,
+        includes = Seq(
+          "regex:src[\\\\/].*\\.java",
+          "regex:test[\\\\/].*\\.java",
+          "regex:benchmarks[\\\\/].*\\.java"
+        ),
+        excludes = headerExcludes,
+        lineEnding = "GIT_ATTRIBUTES_FAST_ALLSAME",
+        encoding = "UTF-8",
+        suppressions = Seq.empty
+      ),
+      Format(
+        steps =
+          Seq(Format.LicenseHeader(delimiter, Format.ContentOrFile(content = downstreamHeader))) ++
+            javaImportSteps,
+        includes = Seq("regex:testDownstream[\\\\/].*\\.java"),
+        excludes = headerExcludes,
+        lineEnding = "GIT_ATTRIBUTES_FAST_ALLSAME",
+        encoding = "UTF-8",
+        suppressions = Seq.empty
+      )
+    )
+  }
+
+  override def spotlessExcludes = Task.Input {
+    Seq.empty[String]
+  }
+}

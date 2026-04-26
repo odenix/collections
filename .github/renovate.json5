@@ -1,0 +1,36 @@
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+
+  extends: [
+    "config:recommended",
+    "helpers:pinGitHubActionDigests",
+  ],
+
+  customManagers: [
+    {
+      customType: "regex",
+      managerFilePatterns: ["\\.mill$"],
+      matchStrings: [
+        'mvn"(?<depName>[^:"]+:[^:"]+):(?<currentValue>[^"]+)"',
+      ],
+      datasourceTemplate: "maven",
+    },
+    {
+      customType: "regex",
+      managerFilePatterns: ["\\.mill$"],
+      matchStrings: [
+        "val\\s+\\w+\\s*=\\s*\"(?<currentValue>[^\"]+)\"\\s*//\\s*renovate:\\s*depName=(?<depName>\\S+)",
+      ],
+      datasourceTemplate: "maven",
+    },
+    {
+      customType: "regex",
+      managerFilePatterns: ["(^|/)build\\.mill$"],
+      matchStrings: [
+        "mill-version:\\s*(?<currentValue>\\S+)",
+      ],
+      depNameTemplate: "com.lihaoyi:mill-dist",
+      datasourceTemplate: "maven",
+    },
+  ],
+}

@@ -1,0 +1,418 @@
+package build.benchmarks
+
+import mill._
+import mill.javalib._
+
+object `package` extends JavaModule {
+  def moduleDeps = Seq(build)
+
+  def mvnDeps = super.mvnDeps() ++ Seq(
+    build.Deps.jmhCore
+  )
+
+  def annotationProcessorsMvnDeps = Seq(
+    build.Deps.jmhGeneratorAnnprocess
+  )
+
+  def jvmVersion = build.Versions.jvmToolchain
+
+  def javacOptions = Task {
+    Seq("--release", build.Versions.jvmTarget)
+  }
+
+  def runFast() = Task.Command {
+    val classpath = runClasspath().map(_.path.toString).mkString(java.io.File.pathSeparator)
+    val javaExecutable = javaExecutableFrom(javaHome())
+    runJmh(
+      javaExecutable,
+      classpath,
+      fastIncludes,
+      fastArgs
+    )
+  }
+
+  def runFull() = Task.Command {
+    val classpath = runClasspath().map(_.path.toString).mkString(java.io.File.pathSeparator)
+    val javaExecutable = javaExecutableFrom(javaHome())
+    runJmh(
+      javaExecutable,
+      classpath,
+      Seq("benchmarks.*"),
+      Seq(
+        "-wi",
+        "7",
+        "-i",
+        "7",
+        "-w",
+        "500ms",
+        "-r",
+        "500ms",
+        "-p",
+        "size=1,10,100,1000,10000",
+        "-p",
+        "immutablePercentage=0",
+        "-p",
+        "hashCodeType=random,collision",
+        "-f",
+        "1"
+      )
+    )
+  }
+
+  def runSmoke() = Task.Command {
+    val classpath = runClasspath().map(_.path.toString).mkString(java.io.File.pathSeparator)
+    val javaExecutable = javaExecutableFrom(javaHome())
+    runJmh(
+      javaExecutable,
+      classpath,
+      Seq(
+        "benchmarks.immutableList.Get.getByIndex$",
+        "benchmarks.immutableMap.Get.get$",
+        "benchmarks.immutableSet.Contains.contains$"
+      ),
+      Seq(
+        "-wi",
+        "0",
+        "-i",
+        "1",
+        "-r",
+        "100ms",
+        "-p",
+        "size=10",
+        "-p",
+        "hashCodeType=random",
+        "-bm",
+        "thrpt",
+        "-tu",
+        "s",
+        "-f",
+        "1"
+      )
+    )
+  }
+  
+  def compareFast() = Task.Command {
+    build.initUpstream()()
+    val repoRoot = moduleDir / os.up
+    val downstreamReport = Task.dest / "downstream-fast.json"
+    val classpath = runClasspath().map(_.path.toString).mkString(java.io.File.pathSeparator)
+
+    val upstreamReport = runUpstreamFast(repoRoot)
+    val upstreamResults = readJmhResults(upstreamReport)
+    val upstreamJvm = jvmInfo(upstreamResults)
+    runDownstreamFast(os.Path(upstreamJvm.jvm), classpath, downstreamReport)
+    val downstreamResults = readJmhResults(downstreamReport)
+
+    val downstreamJvm = jvmInfo(downstreamResults)
+    val upstreamVendor = javaVendor(repoRoot, upstreamJvm.jvm)
+    val downstreamVendor = javaVendor(repoRoot, downstreamJvm.jvm)
+
+    println()
+    println("JVMs")
+    println(s"  upstream:   ${upstreamJvm.describe(upstreamVendor)}")
+    println(s"  downstream: ${downstreamJvm.describe(downstreamVendor)}")
+    checkSameJvm(upstreamJvm, downstreamJvm)
+
+    val downstreamByKey = downstreamResults.map(result => result.key -> result).toMap
+    val comparisons = upstreamResults.flatMap { upstream =>
+      downstreamByKey.get(upstream.key).map { downstream =>
+        BenchmarkComparison(upstream, downstream)
+      }
+    }.sortBy(_.key)
+
+    val missingDownstream = upstreamResults.filterNot(result => downstreamByKey.contains(result.key))
+    val upstreamByKey = upstreamResults.map(result => result.key -> result).toMap
+    val missingUpstream = downstreamResults.filterNot(result => upstreamByKey.contains(result.key))
+
+    val report = comparisonReport(
+      upstreamReport,
+      downstreamReport,
+      upstreamJvm.describe(upstreamVendor),
+      downstreamJvm.describe(downstreamVendor),
+      comparisons,
+      missingDownstream,
+      missingUpstream
+    )
+    val reportPath = Task.dest / "fast-comparison.md"
+    os.write.over(reportPath, report)
+    println(report)
+    println(s"Wrote benchmark comparison report to $reportPath")
+  }
+  
+  private def javaExecutableFrom(javaHome: Option[mill.api.PathRef]): os.Path =
+    javaHome
+      .map(_.path / "bin" / (if (scala.util.Properties.isWin) "java.exe" else "java"))
+      .getOrElse(os.Path("java", os.pwd))
+
+  private def fastIncludes: Seq[String] = Seq(
+    "benchmarks.immutableList.Add.addLast$",
+    "benchmarks.immutableList.Get.getByIndex$",
+    "benchmarks.immutableList.Iterate.firstToLast$",
+    "benchmarks.immutableList.Remove.removeLast$",
+    "benchmarks.immutableList.Set.setByIndex$",
+    "benchmarks.immutableMap.Get.get$",
+    "benchmarks.immutableMap.Iterate.iterateKeys$",
+    "benchmarks.immutableMap.Put.put$",
+    "benchmarks.immutableMap.Remove.remove$",
+    "benchmarks.immutableSet.Add.add$",
+    "benchmarks.immutableSet.Contains.contains$",
+    "benchmarks.immutableSet.Iterate.iterate$",
+    "benchmarks.immutableSet.Remove.remove$"
+  )
+
+  private def fastArgs: Seq[String] = Seq(
+    "-wi",
+    "7",
+    "-i",
+    "7",
+    "-w",
+    "500ms",
+    "-r",
+    "500ms",
+    "-p",
+    "size=1000",
+    "-p",
+    "hashCodeType=random",
+    "-bm",
+    "thrpt",
+    "-tu",
+    "s",
+    "-f",
+    "1"
+  )
+
+  private def runJmh(javaExecutable: os.Path, classpath: String, includes: Seq[String], args: Seq[String]) = {
+    os.proc(Seq(
+        javaExecutable.toString,
+        "-cp",
+        classpath,
+        "org.openjdk.jmh.Main"
+      ) ++ includes ++ args)
+      .call(cwd = os.pwd, stdout = os.Inherit, stderr = os.Inherit)
+  }
+
+  private def runDownstreamFast(javaExecutable: os.Path, classpath: String, report: os.Path): Unit =
+    runJmh(
+      javaExecutable,
+      classpath,
+      fastIncludes,
+      fastArgs ++ Seq(
+        "-rf",
+        "json",
+        "-rff",
+        report.toString
+      )
+    )
+
+  private def runUpstreamFast(repoRoot: os.Path): os.Path = {
+    val reports = upstreamFastReports(repoRoot)
+    val before = latestUpstreamReport(reports)
+    val gradlew =
+      if (scala.util.Properties.isWin) repoRoot / "upstream" / "gradlew.bat"
+      else repoRoot / "upstream" / "gradlew"
+    os.proc(
+        gradlew.toString,
+        "--no-daemon",
+        ":benchmarks:jvmFastBenchmark",
+        "--console=plain"
+      )
+      .call(cwd = repoRoot / "upstream", stdout = os.Inherit, stderr = os.Inherit)
+
+    val after = latestUpstreamReport(reports)
+      .getOrElse(throw new RuntimeException(s"Upstream benchmark did not write a jvm.json report under $reports"))
+    if (before.contains(after)) {
+      println(s"Upstream benchmark reused existing report: $after")
+    }
+    after
+  }
+
+  private def latestUpstreamReport(reports: os.Path): Option[os.Path] =
+    if (!os.exists(reports)) None
+    else {
+      os.list(reports)
+        .filter(os.isDir)
+        .map(_ / "jvm.json")
+        .filter(os.exists)
+        .sortBy(path => os.mtime(path))
+        .lastOption
+    }
+
+  private def upstreamFastReports(repoRoot: os.Path): os.Path =
+    repoRoot / "upstream" / "benchmarks" / "build" / "reports" / "benchmarks" / "fast"
+
+  private def readJmhResults(report: os.Path): Seq[JmhResult] = {
+    val json = ujson.read(os.read(report))
+    json.arr.toSeq.map { item =>
+      val obj = item.obj
+      val params = obj
+        .get("params")
+        .map(_.obj.toSeq.map { case (name, value) => name -> value.str }.toMap)
+        .getOrElse(Map.empty)
+      val primary = obj("primaryMetric").obj
+      JmhResult(
+        benchmark = obj("benchmark").str,
+        mode = obj("mode").str,
+        params = params,
+        score = primary("score").num,
+        scoreError = primary("scoreError").num,
+        scoreUnit = primary("scoreUnit").str,
+        jvm = obj("jvm").str,
+        jdkVersion = obj("jdkVersion").str,
+        vmName = obj("vmName").str,
+        vmVersion = obj("vmVersion").str
+      )
+    }
+  }
+
+  private def jvmInfo(results: Seq[JmhResult]): JvmInfo =
+    results.headOption
+      .map(result => JvmInfo(result.jvm, result.jdkVersion, result.vmName, result.vmVersion))
+      .getOrElse(throw new RuntimeException("JMH report contained no benchmark results"))
+
+  private def javaVendor(repoRoot: os.Path, javaExecutable: String): Option[String] = {
+    val result = os.proc(javaExecutable, "-XshowSettings:properties", "-version")
+      .call(cwd = repoRoot, stdout = os.Pipe, stderr = os.Pipe, check = false)
+    val output = result.out.text() + result.err.text()
+    """(?m)^\s*java\.vendor\s*=\s*(.+)$""".r
+      .findFirstMatchIn(output)
+      .map(_.group(1).trim)
+  }
+
+  private def checkSameJvm(upstream: JvmInfo, downstream: JvmInfo): Unit = {
+    val mismatches = Seq(
+      "jvm" -> (upstream.jvm, downstream.jvm),
+      "jdkVersion" -> (upstream.jdkVersion, downstream.jdkVersion),
+      "vmName" -> (upstream.vmName, downstream.vmName),
+      "vmVersion" -> (upstream.vmVersion, downstream.vmVersion)
+    ).collect {
+      case (name, (upstreamValue, downstreamValue)) if upstreamValue != downstreamValue =>
+        s"$name: upstream `$upstreamValue`, downstream `$downstreamValue`"
+    }
+    if (mismatches.nonEmpty) {
+      throw new RuntimeException(
+        "Upstream and downstream benchmarks used different JVMs:" +
+          System.lineSeparator() +
+          mismatches.mkString(System.lineSeparator())
+      )
+    }
+  }
+
+  private def comparisonReport(
+      upstreamReport: os.Path,
+      downstreamReport: os.Path,
+      upstreamJvm: String,
+      downstreamJvm: String,
+      comparisons: Seq[BenchmarkComparison],
+      missingDownstream: Seq[JmhResult],
+      missingUpstream: Seq[JmhResult]
+  ): String = {
+    val rows = fixedWidthTable(
+      Seq("Benchmark", "Ratio", "Up ops/s", "Down ops/s", "Params"),
+      Seq(33, 6, 12, 12, 34),
+      Seq(false, true, true, true, false),
+      comparisons.map { comparison =>
+        Seq(
+          comparison.displayBenchmark,
+          f"${comparison.ratio}%.3f",
+          f"${comparison.upstream.score}%.3f",
+          f"${comparison.downstream.score}%.3f",
+          comparison.displayParams
+        )
+      }
+    )
+    val missingRows =
+      if (missingDownstream.isEmpty && missingUpstream.isEmpty) ""
+      else {
+        val downstream = missingDownstream.map(result => s"- Missing downstream: ${result.displayKey}")
+        val upstream = missingUpstream.map(result => s"- Missing upstream: ${result.displayKey}")
+        (Seq("", "Unmatched results:") ++ downstream ++ upstream).mkString(System.lineSeparator())
+      }
+
+    Seq(
+      "# Fast Benchmark Comparison",
+      "",
+      s"- Upstream report: `$upstreamReport`",
+      s"- Downstream report: `$downstreamReport`",
+      s"- Upstream JVM: $upstreamJvm",
+      s"- Downstream JVM: $downstreamJvm",
+      "",
+      rows,
+      missingRows
+    ).filter(_.nonEmpty).mkString(System.lineSeparator())
+  }
+
+  private def fixedWidthTable(
+      headers: Seq[String],
+      widths: Seq[Int],
+      rightAligned: Seq[Boolean],
+      rows: Seq[Seq[String]]
+  ): String = {
+    val divider = widths.map("-" * _).mkString("-+-")
+    val renderedRows =
+      rows.map(row => renderFixedWidthRow(row, widths, rightAligned))
+    (Seq(renderFixedWidthRow(headers, widths, rightAligned), divider) ++ renderedRows)
+      .mkString(System.lineSeparator())
+  }
+
+  private def renderFixedWidthRow(cells: Seq[String], widths: Seq[Int], rightAligned: Seq[Boolean]): String =
+    cells
+      .zip(widths)
+      .zip(rightAligned)
+      .map { case ((cell, width), alignRight) =>
+        val shortened = truncateCell(cell, width)
+        if (alignRight) shortened.reverse.padTo(width, ' ').reverse else shortened.padTo(width, ' ')
+      }
+      .mkString(" | ")
+
+  private def truncateCell(cell: String, width: Int): String =
+    if (cell.length <= width) cell
+    else if (width <= 1) cell.take(width)
+    else cell.take(width - 1) + "~"
+
+  private case class JmhResult(
+      benchmark: String,
+      mode: String,
+      params: Map[String, String],
+      score: Double,
+      scoreError: Double,
+      scoreUnit: String,
+      jvm: String,
+      jdkVersion: String,
+      vmName: String,
+      vmVersion: String
+  ) {
+    def key: String = {
+      val renderedParams = params.toSeq.sortBy(_._1).map { case (name, value) => s"$name=$value" }
+      (benchmark +: renderedParams).mkString(" ")
+    }
+
+    def displayBenchmark: String =
+      benchmark.stripPrefix("benchmarks.")
+
+    def displayParams: String = {
+      val shortened = params.toSeq.sortBy(_._1).map {
+        case ("hashCodeType", value) => s"hash=$value"
+        case ("implementation", value) => s"impl=$value"
+        case (name, value) => s"$name=$value"
+      }
+      if (shortened.isEmpty) "" else shortened.mkString(" ")
+    }
+
+    def displayKey: String =
+      Seq(displayBenchmark, displayParams).filter(_.nonEmpty).mkString(" ")
+  }
+
+  private case class JvmInfo(jvm: String, jdkVersion: String, vmName: String, vmVersion: String) {
+    def describe(vendor: Option[String]): String = {
+      val vendorText = vendor.map(value => s", vendor=$value").getOrElse("")
+      s"$jdkVersion, $vmName, $vmVersion, java=$jvm$vendorText"
+    }
+  }
+
+  private case class BenchmarkComparison(upstream: JmhResult, downstream: JmhResult) {
+    def key: String = upstream.key
+    def displayBenchmark: String = upstream.displayBenchmark
+    def displayParams: String = upstream.displayParams
+    def ratio: Double = downstream.score / upstream.score
+  }
+}

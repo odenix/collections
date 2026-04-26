@@ -1,0 +1,19 @@
+package build
+
+import mill._
+import mill.javalib.DepSyntax
+
+object Versions {
+  // keep in sync with `//| mill-jvm-version:` directive in build.mill
+  val jvmMill = "temurin:21" 
+  
+  val jvmToolchain = "temurin:25"
+  val jvmTarget = "21"
+}
+
+object Deps {
+  val jspecify = mvn"org.jspecify:jspecify:1.0.0"
+  val junit = mvn"org.junit.jupiter:junit-jupiter:6.0.3"
+  val jmhCore = mvn"org.openjdk.jmh:jmh-core:1.37"
+  val jmhGeneratorAnnprocess = mvn"org.openjdk.jmh:jmh-generator-annprocess:1.37"
+}

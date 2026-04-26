@@ -1,0 +1,8 @@
+/*
+ * SPDX-License-Identifier: Apache-2.0
+ * Copyright 2026 The Odenix Collections Authors
+ */
+@NullMarked
+package tests.map;
+
+import org.jspecify.annotations.NullMarked;

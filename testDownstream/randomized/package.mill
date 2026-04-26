@@ -1,0 +1,62 @@
+package build.testDownstream.randomized
+
+import java.time.Instant
+import mill._
+
+object RandomizedTest {
+  // first deterministic seed included in the run
+  val startSeed = 0
+  // number of deterministic seeds to execute
+  val seedCount = 10000
+  // operation count for each seed unless a test provides a smaller default
+  val operations = 3000
+  // number of seeds grouped into one JUnit parameterized invocation
+  val chunkSize = 100
+  // seed-progress logging interval; use 0 to disable progress logs
+  val progressEvery = 100
+}
+
+object `package` extends build.CollectionsTests {
+  def forkArgs = Task {
+    val settings = randomizedSettings(Task.dest)
+    super.forkArgs() ++ Seq(
+      s"-Dtests.randomized.startSeed=${settings.startSeed}",
+      s"-Dtests.randomized.seedCount=${settings.seedCount}",
+      s"-Dtests.randomized.operations=${settings.operations}",
+      s"-Dtests.randomized.chunkSize=${settings.chunkSize}",
+      s"-Dtests.randomized.progressEvery=${settings.progressEvery}",
+      s"-Dtests.randomized.traceDir=${settings.traceDirectory}"
+    )
+  }
+
+  // Let JUnit parallelize seed chunks without stacking Mill test-process parallelism.
+  def testParallelism = false
+
+  private def randomizedSettings(taskDestination: os.Path): RandomizedSettings = {
+    RandomizedSettings(
+      RandomizedTest.startSeed,
+      RandomizedTest.seedCount,
+      RandomizedTest.operations,
+      RandomizedTest.chunkSize,
+      RandomizedTest.progressEvery,
+      traceRoot(taskDestination) /
+        s"run-${RandomizedTest.startSeed}-${RandomizedTest.seedCount}-${RandomizedTest.operations}" /
+        runId()
+    )
+  }
+
+  private def traceRoot(taskDestination: os.Path): os.Path =
+    taskDestination / os.up / "testRandomized-traces"
+
+  private def runId(): String =
+    "attempt-" + Instant.now().toString.replaceAll("[^A-Za-z0-9_.-]", "_")
+
+  private case class RandomizedSettings(
+      startSeed: Int,
+      seedCount: Int,
+      operations: Int,
+      chunkSize: Int,
+      progressEvery: Int,
+      traceDirectory: os.Path
+  )
+}
