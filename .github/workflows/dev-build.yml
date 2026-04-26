@@ -7,14 +7,11 @@ on:
 
 jobs:
   build:
+    name: Mill Build
     runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@v5
-
-      - name: Cache Coursier
-        uses: coursier/cache-action@v8
-
-      - name: Build (Mill)
-        run: ./millw build
+      - uses: coursier/cache-action@v8
+      - run: ./millw build
