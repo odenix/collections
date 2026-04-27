@@ -58,3 +58,9 @@ Approved translation collisions and required deviations from upstream.
   - `tests.implementations.list.TrieIteratorTest` -> `org.odenix.collections.implementations.immutableList.TrieIteratorTest`
   - `tests.implementations.map.HashMapTrieNodeTest` -> `org.odenix.collections.implementations.immutableMap.HashMapTrieNodeTest`
 - Reason: Java package-private access is package-scoped. Placing these tests in matching implementation packages preserves upstream internal coverage without widening production visibility.
+
+## `ObjectRef` Source File
+
+- Upstream: `ObjectRef` is an internal top-level class declared in `implementations/immutableList/Utils.kt`.
+- Java port: `ObjectRef` is a package-private top-level class declared in `implementations/immutableList/ObjectRef.java`.
+- Reason: Java source-path based tools, including Javadoc, resolve top-level classes by matching the class name to the source file name. Splitting `ObjectRef` into its own file preserves package-private visibility and call-site shape while making the implementation source discoverable to the Java toolchain.

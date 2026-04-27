@@ -37,11 +37,21 @@ var map2 = map.put("c", 3);
 System.out.println(map2); // {a=1, b=2, c=3}
 ```
 
-## Why This Port Exists
+## Why Kotlin Immutable Collections
 
-- Java lacks a modern, actively maintained persistent collection library.
-- A Java port of Kotlin Immutable Collections is easier to use from Java and avoids the Kotlin standard library (~2 MB).
-- Modern coding agents reduce the maintenance effort for the port.
+- Built on modern data structures (e.g., CHAMP)
+- Efficient small and large representations
+- Supports insertion-ordered sets and maps
+- Well-designed, thoroughly tested, and benchmarked
+- Proven in production despite its experimental status
+- Backed by JetBrains
+
+## Why This Java Port
+
+- The Java ecosystem lacks a modern, actively maintained persistent collection library
+- Easier and more natural to use from Java
+- Avoids a dependency on the Kotlin standard library (~2 MB)
+- Modern coding agents reduce maintenance effort
 
 ## API Overview
 

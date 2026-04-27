@@ -40,11 +40,3 @@ final class Utils {
     return (vectorSize - 1) & ~MAX_BUFFER_SIZE_MINUS_ONE;
   }
 }
-
-final class ObjectRef {
-  @Nullable Object value;
-
-  ObjectRef(@Nullable Object value) {
-    this.value = value;
-  }
-}

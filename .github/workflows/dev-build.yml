@@ -14,4 +14,4 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: coursier/cache-action@v8
-      - run: ./mill build
+      - run: ./mill devBuild

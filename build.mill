@@ -7,8 +7,44 @@ import mill.api.daemon.SelectMode
 import mill.javalib._
 import mill.javalib.publish._
 import mill.javalib.spotless.{Format, SpotlessModule}
+import mill.util.Jvm
 
-object `package` extends JavaModule with PublishModule with SpotlessModule {
+object `package` extends JavaModule with SonatypeCentralPublishModule with SpotlessModule {
+  def build(evaluator: Evaluator) = Task.Command(exclusive = true) {
+    val result = evaluator.evaluate(
+      Seq("spotlessCheck", "test", "test.extra"), 
+      SelectMode.Multi
+    ).get
+    result.values.get
+    ()
+  }
+
+  def devBuild(evaluator: Evaluator) = Task.Command(exclusive = true) {
+    val result = evaluator.evaluate(
+      Seq("spotlessCheck", "test", "test.extra", "docJar", "publishM2Local"), 
+      SelectMode.Multi
+    ).get
+    result.values.get
+    ()
+  }
+
+  def releaseBuild(evaluator: Evaluator) = Task.Command(exclusive = true) {
+    val result = evaluator.evaluate(
+      Seq("spotlessCheck", "test", "test.extra", "docJar"),
+      SelectMode.Multi
+    ).get
+    result.values.get
+    ()
+  }
+
+  def jvmVersion = Versions.jvmToolchain
+  def artifactName = "odenix-collections"
+  def moduleName = "org.odenix.collections"
+  
+  def mvnDeps = super.mvnDeps() ++ Seq(
+    Deps.jspecify
+  )
+  
   trait CollectionsTests extends JavaTests with TestModule.Junit6 {
     def mvnDeps = super.mvnDeps() ++ Seq(
       Deps.junit
@@ -16,12 +52,6 @@ object `package` extends JavaModule with PublishModule with SpotlessModule {
 
     def forkArgs = super.forkArgs() ++ Seq("-ea")
   }
-
-  def mvnDeps = super.mvnDeps() ++ Seq(
-    Deps.jspecify
-  )
-
-  def jvmVersion = Versions.jvmToolchain
 
   def javacOptions = Task {
     Seq(
@@ -34,15 +64,78 @@ object `package` extends JavaModule with PublishModule with SpotlessModule {
   }
 
   def javadocOptions = Task {
+    val sourcePath = allSources().map(_.path).filter(os.isDir(_)).mkString(java.io.File.pathSeparator)
+    val modulePath = resolvedMvnDeps().iterator.map(_.path).filter(_.ext != "pom").toSeq
+    val modulePathOptions =
+      if (modulePath.isEmpty) Seq.empty
+      else Seq("--module-path", modulePath.mkString(java.io.File.pathSeparator))
+
     super.javadocOptions() ++ Seq(
-      "--module-path",
-      resolvedMvnDeps().map(_.path.toString).mkString(java.io.File.pathSeparator)
-    )
+      "-protected",
+      "-Xdoclint:all,-missing",
+      "-doctitle", "Odenix Collections",
+      "-windowtitle", "Odenix Collections",
+      "-bottom", "Copyright 2026 The Odenix Collections Authors",
+      "-link", "https://docs.oracle.com/en/java/javase/21/docs/api/",
+      "-link", "https://jspecify.dev/docs/api/",
+      "--module", moduleName,
+      "--module-source-path", s"$moduleName=$sourcePath",
+      "--show-packages", "exported",
+    ) ++ modulePathOptions
   }
 
-  def publishVersion = "0.1.0-SNAPSHOT"
+  // Mill's default javadocGenerated expands docSources() to explicit source files.
+  // Use javadoc's JPMS module mode instead, so `--show-packages exported` controls
+  // which packages are documented while all module sources remain available for resolution.
+  override def javadocGenerated = Task[PathRef] {
+    val outDir = Task.dest
+    
+    val javadocDir = outDir / "javadoc"
+    os.makeDir.all(javadocDir)
 
-  def artifactName = "collections"
+    val options =
+      javadocOptions() ++ Seq("-d", javadocDir.toString)
+
+    val cmdArgs =
+      if (docJarUseArgsFile()) {
+        val content =
+          options
+            .map(s => s""""${s.replace("\\", "\\\\")}"""")
+            .mkString(" ")
+        val argsFile =
+          os.temp(
+            contents = content,
+            prefix = "javadoc-",
+            deleteOnExit = false,
+            dir = outDir
+          )
+        Task.log.debug(s"Creating javadoc options file @$argsFile ...")
+        Seq(s"@$argsFile")
+      } else {
+        options
+      }
+
+    val javaHomePath = javaHome().map(_.path)
+    Task.log.info(s"java home: ${javaHomePath.fold("default")(_.toString)}")
+    Task.log.info("options: " + cmdArgs)
+
+    os.call(
+      cmd = Seq(Jvm.jdkTool("javadoc", javaHomePath)) ++ cmdArgs,
+      env = Map(),
+      cwd = outDir,
+      stdin = os.Inherit,
+      stdout = os.Inherit
+    )
+
+    PathRef(javadocDir)
+  }
+
+  def publishVersion = Task {
+    (Task.env.get("GITHUB_REF_TYPE"), Task.env.get("GITHUB_REF_NAME")) match {
+      case (Some("tag"), Some(tag)) if tag.matches(raw"\d+\.\d+\.\d+.*") => tag
+      case _ => "0.0.0-SNAPSHOT"
+    }
+  }
 
   def pomSettings = PomSettings(
     description = "A persistent collection library for Java 21+.",
@@ -62,14 +155,6 @@ object `package` extends JavaModule with PublishModule with SpotlessModule {
     spotless(mainargs.Flag(true))()
   }
 
-  def build(evaluator: Evaluator) = Task.Command(exclusive = true) {
-    // Use public Mill task selectors to aggregate sibling package.mill modules
-    // without relying on generated Scala names.
-    val result = evaluator.evaluate(Seq("spotlessCheck", "test", "test.extra"), SelectMode.Multi).get
-    result.values.get
-    ()
-  }
-
   override def spotlessFormats = Task.Input {
     val portedHeader =
       """/*
@@ -82,9 +167,9 @@ object `package` extends JavaModule with PublishModule with SpotlessModule {
         | * SPDX-License-Identifier: Apache-2.0
         | * Copyright 2026 The Odenix Collections Authors
         | */""".stripMargin
-    val delimiter = "(?m)^package\\b"
-    val headerExcludes = Seq("regex:.*package-info\\.java", "regex:.*module-info\\.java")
-    val portedExcludes = headerExcludes ++ Seq("regex:test[\\\\/]extra[\\\\/].*\\.java")
+    val delimiter = raw"(?m)^package\b"
+    val headerExcludes = Seq(raw"regex:.*package-info\.java", raw"regex:.*module-info\.java")
+    val portedExcludes = headerExcludes ++ Seq(raw"regex:test[\\/]extra[\\/].*\.java")
     val javaImportSteps = Seq(
       Format.RemoveUnusedImports(),
       Format.ImportOrder(
@@ -103,9 +188,9 @@ object `package` extends JavaModule with PublishModule with SpotlessModule {
           Seq(Format.LicenseHeader(delimiter, Format.ContentOrFile(content = portedHeader))) ++
             javaImportSteps,
         includes = Seq(
-          "regex:src[\\\\/].*\\.java",
-          "regex:test[\\\\/].*\\.java",
-          "regex:benchmarks[\\\\/].*\\.java"
+          raw"regex:src[\\/].*\.java",
+          raw"regex:test[\\/].*\.java",
+          raw"regex:benchmarks[\\/].*\.java"
         ),
         excludes = portedExcludes,
         lineEnding = "GIT_ATTRIBUTES_FAST_ALLSAME",
@@ -116,7 +201,7 @@ object `package` extends JavaModule with PublishModule with SpotlessModule {
         steps =
           Seq(Format.LicenseHeader(delimiter, Format.ContentOrFile(content = downstreamHeader))) ++
             javaImportSteps,
-        includes = Seq("regex:test[\\\\/]extra[\\\\/].*\\.java"),
+        includes = Seq(raw"regex:test[\\/]extra[\\/].*\.java"),
         excludes = headerExcludes,
         lineEnding = "GIT_ATTRIBUTES_FAST_ALLSAME",
         encoding = "UTF-8",
