@@ -10,7 +10,7 @@
     // Update Maven dependencies written as Mill mvn"...:version" literals.
     {
       customType: "regex",
-      managerFilePatterns: ["\\.mill$"],
+      managerFilePatterns: ["**/*.mill"],
       matchStrings: [
         'mvn"(?<depName>[^:"]+:[^:"]+):(?<currentValue>[^"]+)"',
       ],
@@ -19,7 +19,7 @@
     // Update Maven dependencies stored in plain strings with Renovate hints.
     {
       customType: "regex",
-      managerFilePatterns: ["\\.mill$"],
+      managerFilePatterns: ["**/*.mill"],
       matchStrings: [
         "val\\s+\\w+\\s*=\\s*\"(?<currentValue>[^\"]+)\"\\s*//\\s*renovate:\\s*depName=(?<depName>\\S+)",
       ],
@@ -28,7 +28,7 @@
     // Update the Mill executable version pinned by the wrapper.
     {
       customType: "regex",
-      managerFilePatterns: ["(^|/)\\.mill-version$"],
+      managerFilePatterns: [".mill-version"],
       matchStrings: [
         "^(?<currentValue>\\S+)$",
       ],
