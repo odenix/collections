@@ -18,6 +18,12 @@ object `package` extends JavaModule with SonatypeCentralPublishModule with Spotl
     runTasks(evaluator, "spotlessCheck", "test", "test.extra", "docJar", "publishM2Local")
   }
 
+  //noinspection ScalaDeprecation
+  // https://github.com/com-lihaoyi/mill/issues/7052
+  def sonatypeCentralGpgArgs = Task {
+    "--local-user,FD2EB321DE41B4C4"
+  }
+  
   def sonatypeCentralShouldRelease = Task { false }
   
   def publishSonatypeCentralIfMissing(evaluator: Evaluator) = Task.Command(exclusive = true) {
