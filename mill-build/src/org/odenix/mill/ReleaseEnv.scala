@@ -8,7 +8,7 @@ final case class ReleaseEnv(
     githubToken: Option[String]
 ) derives ReadWriter {
   def requireVersion(): String = version.getOrElse(
-    sys.error("RELEASE_VERSION or a GitHub tag ref is required")
+    sys.error("RELEASE_VERSION is required")
   )
 
   def requireGitHubRepository(): String = githubRepository.getOrElse(
@@ -28,10 +28,8 @@ object ReleaseEnv {
       githubToken = env.get("GITHUB_TOKEN").orElse(env.get("GH_TOKEN"))
     )
 
-  private def versionFromEnv(env: Map[String, String]): Option[String] =
-    env.get("RELEASE_VERSION").orElse {
-      if (env.get("GITHUB_REF_TYPE").contains("tag")) {
-        env.get("GITHUB_REF_NAME").filter(_.matches(raw"\d+\.\d+\.\d+.*"))
-      } else None
-    }
+  private def versionFromEnv(env: Map[String, String]): Option[String] = {
+    // GitHub jobs set empty string if version is not available
+    env.get("RELEASE_VERSION").filterNot(_.isBlank)
+  }
 }

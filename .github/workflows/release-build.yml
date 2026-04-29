@@ -5,10 +5,46 @@ on:
   push:
     tags:
       - '[0-9]+.[0-9]+.[0-9]+'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version, e.g. 0.1.0
+        required: true
+        type: string
+      target:
+        description: Which release jobs to run
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - maven-central
+          - github
+
+env:
+  RELEASE_VERSION: ${{ inputs.version || (github.ref_type == 'tag' && github.ref_name) || '' }}
 
 jobs:
-  build:
-    name: Release Build (Linux)
+  publish-maven-central:
+    name: Publish to Maven Central
+    if: github.event_name == 'push' || inputs.target == 'all' || inputs.target == 'maven-central'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: coursier/cache-action@90c37294538be80a558fd665531fcdc2b467b475 # v8
+      - run: ./mill devBuild
+      - run: ./mill publishSonatypeCentral
+        env:
+          MILL_PGP_PASSPHRASE: ${{ secrets.MILL_PGP_PASSPHRASE }}
+          MILL_PGP_SECRET_BASE64: ${{ secrets.MILL_PGP_SECRET_BASE64 }}
+          MILL_SONATYPE_PASSWORD: ${{ secrets.MILL_SONATYPE_PASSWORD }}
+          MILL_SONATYPE_USERNAME: ${{ secrets.MILL_SONATYPE_USERNAME }}
+
+  publish-github:
+    name: Publish to GitHub
+    if: github.event_name == 'push' || inputs.target == 'all' || inputs.target == 'github'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -21,13 +57,6 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - uses: coursier/cache-action@90c37294538be80a558fd665531fcdc2b467b475 # v8
       - run: ./mill devBuild
-      - run: ./mill printReleaseNotes
-      - run: ./mill publishSonatypeCentral
-        env:
-          MILL_PGP_PASSPHRASE: ${{ secrets.MILL_PGP_PASSPHRASE }}
-          MILL_PGP_SECRET_BASE64: ${{ secrets.MILL_PGP_SECRET_BASE64 }}
-          MILL_SONATYPE_PASSWORD: ${{ secrets.MILL_SONATYPE_PASSWORD }}
-          MILL_SONATYPE_USERNAME: ${{ secrets.MILL_SONATYPE_USERNAME }}
       - run: ./mill uploadGitHubRelease
         env:
           GITHUB_TOKEN: ${{ github.token }}
