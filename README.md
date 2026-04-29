@@ -4,14 +4,21 @@ A persistent collection library for Java 21+.
 
 Persistent collections are immutable collections whose update operations return new collections while sharing storage with the original.
 
-This library is a Java port of [Kotlin Immutable Collections](https://github.com/Kotlin/kotlinx.collections.immutable) by JetBrains, closely following its structure and behavior.
-The public API is in the `org.odenix.collections` package.
+This library ports [Kotlin Immutable Collections](https://github.com/Kotlin/kotlinx.collections.immutable) by JetBrains to a Java-native API.
 
-The only dependency is JSpecify (~3 KB). It is used for nullness annotations and can be excluded.
+## Contents
+
+- [Example](#example)
+- [Installation](#installation)
+- [Why This Library](#why-this-library)
+- [API Overview](#api-overview)
+- [Development](#development)
 
 ## Example
 
 ```java
+import org.odenix.collections.*;
+
 // Create a persistent list
 var list = PersistentList.of(1, 2, 3);
 
@@ -37,26 +44,56 @@ var map2 = map.put("c", 3);
 System.out.println(map2); // {a=1, b=2, c=3}
 ```
 
-## Why Kotlin Immutable Collections
+## Installation
 
-- Built on modern data structures (e.g., CHAMP)
-- Efficient small and large representations
-- Supports insertion-ordered sets and maps
-- Well-designed, thoroughly tested, and benchmarked
+Releases are available from Maven Central: [org.odenix:odenix-collections](https://central.sonatype.com/artifact/org.odenix/odenix-collections/versions)
+
+Gradle:
+
+```kotlin
+implementation("org.odenix:odenix-collections:{version}")
+```
+
+Maven:
+
+```xml
+<dependency>
+  <groupId>org.odenix</groupId>
+  <artifactId>odenix-collections</artifactId>
+  <version>{version}</version>
+</dependency>
+```
+
+Mill:
+
+```scala
+mvn"org.odenix:odenix-collections:{version}"
+```
+
+## Why This Library
+
+The Java ecosystem lacks a modern, full-featured, production-ready persistent collection library.
+This library aims to fill this gap by porting Kotlin Immutable Collections to Java.
+
+Kotlin Immutable Collections is a strong baseline:
+
+- Modern data structures with efficient small and large representations
+- Hash-based and insertion-ordered sets/maps
+- Thoroughly tested and benchmarked
 - Proven in production despite its experimental status
-- Backed by JetBrains
 
-## Why This Java Port
+This Java port adds:
 
-- The Java ecosystem lacks a modern, actively maintained persistent collection library
-- Easier and more natural to use from Java
-- Avoids a dependency on the Kotlin standard library (~2 MB)
-- Modern coding agents reduce maintenance effort
+- An API optimized for Java
+- No dependency on the Kotlin standard library
+- Java nullness annotations via [JSpecify](https://jspecify.dev/) (only dependency, can be excluded)
 
 ## API Overview
 
-This library provides immutable and persistent collection interfaces.
-Unlike the upstream Kotlin implementation, immutable collections do not extend JDK collection interfaces (except `Iterable`).
+API reference: [latest Javadoc](https://collections.odenix.org/)
+
+The public API is organized around immutable and persistent collection types.
+Unlike Kotlin Immutable Collections, immutable interfaces extend only `Iterable`, not `Collection`, `List`, `Set`, or `Map`.
 
 ### Immutable interfaces
 
@@ -118,7 +155,7 @@ Returned collections may share storage with the original.
 - `stream()`
 - `parallelStream()` 
 
-To keep the result persistent, pass the stream to `from()`
+To keep the result persistent, pass the stream to `from()`:
 
 ```java
 var lengths = PersistentList.from(names.stream().map(String::length));
