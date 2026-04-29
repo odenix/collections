@@ -1,40 +1,71 @@
 //| mill-jvm-version: temurin:21
 package build
 
-import mill._
+import mill.*
 import mill.api.Evaluator
 import mill.api.daemon.SelectMode
-import mill.javalib._
-import mill.javalib.publish._
+import mill.javalib.*
+import mill.javalib.publish.*
 import mill.javalib.spotless.{Format, SpotlessModule}
-import mill.util.Jvm
+import org.odenix.mill.*
 
 object `package` extends JavaModule with SonatypeCentralPublishModule with SpotlessModule {
   def build(evaluator: Evaluator) = Task.Command(exclusive = true) {
-    val result = evaluator.evaluate(
-      Seq("spotlessCheck", "test", "test.extra"), 
-      SelectMode.Multi
-    ).get
-    result.values.get
-    ()
+    runTasks(evaluator, "spotlessCheck", "test", "test.extra")
   }
 
   def devBuild(evaluator: Evaluator) = Task.Command(exclusive = true) {
-    val result = evaluator.evaluate(
-      Seq("spotlessCheck", "test", "test.extra", "docJar", "publishM2Local"), 
-      SelectMode.Multi
-    ).get
-    result.values.get
-    ()
+    runTasks(evaluator, "spotlessCheck", "test", "test.extra", "docJar", "publishM2Local")
   }
 
-  def releaseBuild(evaluator: Evaluator) = Task.Command(exclusive = true) {
-    val result = evaluator.evaluate(
-      Seq("spotlessCheck", "test", "test.extra", "docJar"),
-      SelectMode.Multi
-    ).get
-    result.values.get
-    ()
+  def sonatypeCentralShouldRelease = Task { false }
+  
+  def publishSonatypeCentralIfMissing(evaluator: Evaluator) = Task.Command(exclusive = true) {
+    val version = releaseEnv().requireVersion()
+    val pomUrl = MavenCentral.createPomUrl("org.odenix", artifactName(), version)
+
+    MavenCentral.getArtifactState(pomUrl) match {
+      case MavenCentral.ArtifactState.Present =>
+        Task.log.info(s"Skipping Sonatype publish: $pomUrl already exists")
+      case MavenCentral.ArtifactState.Missing =>
+        runTasks(evaluator, "publishSonatypeCentral")
+      case MavenCentral.ArtifactState.Unknown(status, body) =>
+        sys.error(s"Could not determine whether $pomUrl exists: HTTP $status\n$body")
+    }
+  }
+
+  def releaseEnv = Task.Input {
+    ReleaseEnv(Task.env)
+  }
+
+  def changelog = Task.Source {
+    moduleDir / "CHANGELOG.md"
+  }
+
+  def extractReleaseNotes = Task {
+    val version = releaseEnv().requireVersion()
+    val changelogPath = changelog().path
+    val notes = ReleaseNotes.fromChangelog(changelogPath, version)
+    val notesPath = Task.dest / "release-notes.md"
+    os.write.over(notesPath, notes)
+    PathRef(notesPath)
+  }
+
+  def printReleaseNotes() = Task.Command {
+    println(os.read(extractReleaseNotes().path))
+  }
+
+  def uploadGitHubRelease() = Task.Command {
+    val env = releaseEnv()
+    val notes = os.read(extractReleaseNotes().path)
+
+    GitHubRelease.upsert(
+      repository = env.requireGitHubRepository(),
+      version = env.requireVersion(),
+      notes = notes,
+      token = env.requireGitHubToken()
+    )
+    println(s"Uploaded GitHub release notes for ${env.requireGitHubRepository()}@${env.requireVersion()}")
   }
 
   def jvmVersion = Versions.jvmToolchain
@@ -64,79 +95,38 @@ object `package` extends JavaModule with SonatypeCentralPublishModule with Spotl
   }
 
   def javadocOptions = Task {
-    val sourcePath = allSources().map(_.path).filter(os.isDir(_)).mkString(java.io.File.pathSeparator)
-    val modulePath = resolvedMvnDeps().iterator.map(_.path).filter(_.ext != "pom").toSeq
-    val modulePathOptions =
-      if (modulePath.isEmpty) Seq.empty
-      else Seq("--module-path", modulePath.mkString(java.io.File.pathSeparator))
-
-    super.javadocOptions() ++ Seq(
-      "-protected",
-      "-Xdoclint:all,-missing",
-      "-doctitle", "Odenix Collections",
-      "-windowtitle", "Odenix Collections",
-      "-bottom", "Copyright 2026 The Odenix Collections Authors",
-      "-link", "https://docs.oracle.com/en/java/javase/21/docs/api/",
-      "-link", "https://jspecify.dev/docs/api/",
-      "--module", moduleName,
-      "--module-source-path", s"$moduleName=$sourcePath",
-      "--show-packages", "exported",
-    ) ++ modulePathOptions
+    Javadoc.options(
+      baseOptions = super.javadocOptions(), 
+      moduleName = moduleName, 
+      sourceDirs = allSources().map(_.path).filter(os.isDir(_)), 
+      modulePath = resolvedMvnDeps().iterator.map(_.path).filter(_.ext != "pom").toSeq, 
+      doclint = Seq("all", "-missing"), 
+      docTitle = "Odenix Collections", 
+      windowTitle = "Odenix Collections", 
+      bottom = "Copyright 2026 The Odenix Collections Authors", 
+      links = Seq(
+        "https://docs.oracle.com/en/java/javase/21/docs/api/",
+        "https://jspecify.dev/docs/api/"
+      )
+    )
   }
 
-  // Mill's default javadocGenerated expands docSources() to explicit source files.
-  // Use javadoc's JPMS module mode instead, so `--show-packages exported` controls
-  // which packages are documented while all module sources remain available for resolution.
+  // Mill's default javadocGenerated can't handle Java modules
   override def javadocGenerated = Task[PathRef] {
-    val outDir = Task.dest
-    
-    val javadocDir = outDir / "javadoc"
-    os.makeDir.all(javadocDir)
-
-    val options =
-      javadocOptions() ++ Seq("-d", javadocDir.toString)
-
-    val cmdArgs =
-      if (docJarUseArgsFile()) {
-        val content =
-          options
-            .map(s => s""""${s.replace("\\", "\\\\")}"""")
-            .mkString(" ")
-        val argsFile =
-          os.temp(
-            contents = content,
-            prefix = "javadoc-",
-            deleteOnExit = false,
-            dir = outDir
-          )
-        Task.log.debug(s"Creating javadoc options file @$argsFile ...")
-        Seq(s"@$argsFile")
-      } else {
-        options
-      }
-
-    val javaHomePath = javaHome().map(_.path)
-    Task.log.info(s"java home: ${javaHomePath.fold("default")(_.toString)}")
-    Task.log.info("options: " + cmdArgs)
-
-    os.call(
-      cmd = Seq(Jvm.jdkTool("javadoc", javaHomePath)) ++ cmdArgs,
-      env = Map(),
-      cwd = outDir,
-      stdin = os.Inherit,
-      stdout = os.Inherit
+    Javadoc.generate(
+      options = javadocOptions(),
+      outDir = Task.dest,
+      javaHome = javaHome().map(_.path),
+      useArgsFile = docJarUseArgsFile(),
+      logDebug = Task.log.debug,
+      logInfo = Task.log.info
     )
-
-    PathRef(javadocDir)
   }
 
   def publishVersion = Task {
-    (Task.env.get("GITHUB_REF_TYPE"), Task.env.get("GITHUB_REF_NAME")) match {
-      case (Some("tag"), Some(tag)) if tag.matches(raw"\d+\.\d+\.\d+.*") => tag
-      case _ => "0.0.0-SNAPSHOT"
-    }
+    releaseEnv().version.getOrElse("0.0.0-SNAPSHOT")
   }
-
+  
   def pomSettings = PomSettings(
     description = "A persistent collection library for Java 21+.",
     organization = "org.odenix",
@@ -155,62 +145,47 @@ object `package` extends JavaModule with SonatypeCentralPublishModule with Spotl
     spotless(mainargs.Flag(true))()
   }
 
-  override def spotlessFormats = Task.Input {
-    val portedHeader =
-      """/*
-        | * SPDX-License-Identifier: Apache-2.0
-        | * Copyright 2020 JetBrains s.r.o.
-        | * Copyright 2026 The Odenix Collections Authors
-        | */""".stripMargin
-    val downstreamHeader =
-      """/*
-        | * SPDX-License-Identifier: Apache-2.0
-        | * Copyright 2026 The Odenix Collections Authors
-        | */""".stripMargin
+  override def spotlessFormats = Task {
     val delimiter = raw"(?m)^package\b"
-    val headerExcludes = Seq(raw"regex:.*package-info\.java", raw"regex:.*module-info\.java")
-    val portedExcludes = headerExcludes ++ Seq(raw"regex:test[\\/]extra[\\/].*\.java")
-    val javaImportSteps = Seq(
-      Format.RemoveUnusedImports(),
-      Format.ImportOrder(
-        importOrder = Seq("java", "javax", "org", ""),
-        wildcardsLast = true,
-        semanticSort = false,
-        treatAsPackage = Set.empty,
-        treatAsClass = Set.empty,
-        forJava = true
-      )
+    val allJavaFiles = Seq(
+      raw"regex:src[\\/].*\.java",
+      raw"regex:test[\\/].*\.java",
+      raw"regex:benchmarks[\\/].*\.java"
     )
-
+    val moduleAndPackageInfoFiles = Seq(raw"regex:.*package-info\.java", raw"regex:.*module-info\.java")
+    val testExtraFiles = Seq(raw"regex:test[\\/]extra[\\/].*\.java")
     Seq(
       Format(
-        steps =
-          Seq(Format.LicenseHeader(delimiter, Format.ContentOrFile(content = portedHeader))) ++
-            javaImportSteps,
-        includes = Seq(
-          raw"regex:src[\\/].*\.java",
-          raw"regex:test[\\/].*\.java",
-          raw"regex:benchmarks[\\/].*\.java"
+        steps = Seq(
+          Format.RemoveUnusedImports(),
+          Format.ImportOrder(Seq("java", "javax", "org", ""))
         ),
-        excludes = portedExcludes,
-        lineEnding = "GIT_ATTRIBUTES_FAST_ALLSAME",
-        encoding = "UTF-8",
-        suppressions = Seq.empty
+        includes = allJavaFiles,
       ),
       Format(
-        steps =
-          Seq(Format.LicenseHeader(delimiter, Format.ContentOrFile(content = downstreamHeader))) ++
-            javaImportSteps,
-        includes = Seq(raw"regex:test[\\/]extra[\\/].*\.java"),
-        excludes = headerExcludes,
-        lineEnding = "GIT_ATTRIBUTES_FAST_ALLSAME",
-        encoding = "UTF-8",
-        suppressions = Seq.empty
-      )
+        steps = Seq(Format.LicenseHeader(delimiter, Format.ContentOrFile(content =
+          """/*
+            | * SPDX-License-Identifier: Apache-2.0
+            | * Copyright 2020 JetBrains s.r.o.
+            | * Copyright 2026 The Odenix Collections Authors
+            | */""".stripMargin))),
+        includes = allJavaFiles,
+        excludes = moduleAndPackageInfoFiles ++ testExtraFiles,
+      ),
+      Format(
+        steps = Seq(Format.LicenseHeader(delimiter, Format.ContentOrFile(content =
+          """/*
+            | * SPDX-License-Identifier: Apache-2.0
+            | * Copyright 2026 The Odenix Collections Authors
+            | */""".stripMargin))),
+        includes = testExtraFiles,
+        excludes = moduleAndPackageInfoFiles,
+      ),
     )
   }
 
-  override def spotlessExcludes = Task.Input {
-    Seq.empty[String]
+  private def runTasks(evaluator: Evaluator, tasks: String*): Unit = {
+    val result = evaluator.evaluate(tasks, SelectMode.Multi).get
+    result.values.get
   }
 }

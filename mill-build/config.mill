@@ -1,0 +1,7 @@
+package build
+
+import mill.scalalib.DepSyntax
+
+object Deps {
+  val upickle = mvn"com.lihaoyi::upickle:4.4.3"
+}
