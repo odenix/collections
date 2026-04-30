@@ -1,0 +1,17 @@
+{
+  "lsp": {
+    "jdtls": {
+      "settings": {
+        "initialization_options": {
+          "settings": {
+            "java": {
+              "project": {
+                "sourcePaths": [".", "src", "test", "mill-build/src"]
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

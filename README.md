@@ -2,9 +2,9 @@
 
 A persistent collection library for Java 21+.
 
-Persistent collections are immutable collections whose update operations return new collections while sharing storage with the original.
+Persistent collections are immutable collections whose update operations return new collections that share storage with the original.
 
-This library ports [Kotlin Immutable Collections](https://github.com/Kotlin/kotlinx.collections.immutable) by JetBrains to a Java-native API.
+This library is an idiomatic Java port of [Kotlin Immutable Collections](https://github.com/Kotlin/kotlinx.collections.immutable) by JetBrains.
 
 ## Contents
 
@@ -84,7 +84,7 @@ Kotlin Immutable Collections is a strong baseline:
 
 This Java port adds:
 
-- An API optimized for Java
+- An idiomatic Java API
 - No dependency on the Kotlin standard library
 - Java nullness annotations via [JSpecify](https://jspecify.dev/) (only dependency, can be excluded)
 
