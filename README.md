@@ -18,30 +18,33 @@ This library is an idiomatic Java port of [Kotlin Immutable Collections](https:/
 
 ```java
 import org.odenix.collections.*;
+import static java.lang.System.out;
 
-// Create a persistent list
-var list = PersistentList.of(1, 2, 3);
+void main() {
+  // Create a persistent list
+  var list = PersistentList.of(1, 2, 3);
 
-// Update operations return new collections
-var updated = list.add(4);
+  // Update operations return new collections
+  var updated = list.add(4);
 
-// The original list is unchanged
-System.out.println(list);    // [1, 2, 3]
-System.out.println(updated); // [1, 2, 3, 4]
+  // The original list is unchanged
+  out.println(list);    // [1, 2, 3]
+  out.println(updated); // [1, 2, 3, 4]
 
-// Use mutate() for efficient batched updates
-var mutated = list.mutate(builder -> {
-  builder.add(4);
-  builder.add(5);
-});
+  // Use mutate() for efficient batched updates
+  var mutated = list.mutate(builder -> {
+    builder.add(4);
+    builder.add(5);
+  });
 
-System.out.println(mutated); // [1, 2, 3, 4, 5]
+  out.println(mutated); // [1, 2, 3, 4, 5]
 
-// Maps preserve insertion order by default
-var map = PersistentMap.of("a", 1, "b", 2);
-var map2 = map.put("c", 3);
+  // Maps preserve insertion order by default
+  var map = PersistentMap.of("a", 1, "b", 2);
+  var map2 = map.put("c", 3);
 
-System.out.println(map2); // {a=1, b=2, c=3}
+  out.println(map2); // {a=1, b=2, c=3}
+}
 ```
 
 ## Installation
