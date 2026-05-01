@@ -8,8 +8,9 @@ import mill.javalib.*
 import mill.javalib.publish.*
 import mill.javalib.spotless.{Format, SpotlessModule}
 import org.odenix.mill.*
+import org.odenix.mill.github.*
 
-object `package` extends JavaModule with SonatypeCentralPublishModule with SpotlessModule {
+object `package` extends JavaModule with SonatypeCentralPublishModule with SpotlessModule with DependencyGraphModule {
   def build(evaluator: Evaluator) = Task.Command(exclusive = true) {
     runTasks(evaluator, "spotlessCheck", "test", "test.extra")
   }
@@ -27,7 +28,7 @@ object `package` extends JavaModule with SonatypeCentralPublishModule with Spotl
   def sonatypeCentralShouldRelease = Task { false }
   
   def publishSonatypeCentralIfMissing(evaluator: Evaluator) = Task.Command(exclusive = true) {
-    val version = releaseEnv().requireVersion()
+    val version = requireReleaseVersion()
     val pomUrl = MavenCentral.createPomUrl("org.odenix", artifactName(), version)
 
     MavenCentral.getArtifactState(pomUrl) match {
@@ -40,8 +41,8 @@ object `package` extends JavaModule with SonatypeCentralPublishModule with Spotl
     }
   }
 
-  def releaseEnv = Task.Input {
-    ReleaseEnv(Task.env)
+  def githubEnv = Task.Input {
+    GitHubEnv(Task.env)
   }
 
   def changelog = Task.Source {
@@ -49,7 +50,7 @@ object `package` extends JavaModule with SonatypeCentralPublishModule with Spotl
   }
 
   def extractReleaseNotes = Task {
-    val version = releaseEnv().requireVersion()
+    val version = requireReleaseVersion()
     val changelogPath = changelog().path
     val notes = ReleaseNotes.fromChangelog(changelogPath, version)
     val notesPath = Task.dest / "release-notes.md"
@@ -62,16 +63,48 @@ object `package` extends JavaModule with SonatypeCentralPublishModule with Spotl
   }
 
   def uploadGitHubRelease() = Task.Command {
-    val env = releaseEnv()
+    val env = githubEnv()
     val notes = os.read(extractReleaseNotes().path)
 
-    GitHubRelease.upsert(
-      repository = env.requireGitHubRepository(),
-      version = env.requireVersion(),
+    Release.upsert(
+      repository = env.requireRepository(),
+      version = requireReleaseVersion(),
       notes = notes,
-      token = env.requireGitHubToken()
+      token = env.requireToken()
     )
-    println(s"Uploaded GitHub release notes for ${env.requireGitHubRepository()}@${env.requireVersion()}")
+    println(s"Uploaded GitHub release notes for ${env.requireRepository()}@${requireReleaseVersion()}")
+  }
+
+  def githubDependencyGraph = Task {
+    import DependencyGraph.Scope
+
+    DependencyGraph.fromEnv(
+      githubEnv(),
+      manifests = Seq(
+        DependencyGraph.ManifestEntry.fromJavaModule(
+          this,
+          scope = Scope.Runtime,
+          name = Some("Odenix Collections")
+        ),
+        DependencyGraph.ManifestEntry.fromJavaModule(
+          test.package_,
+          scope = Scope.Development
+        ),
+        DependencyGraph.ManifestEntry.fromJavaModule(
+          test.extra.package_,
+          scope = Scope.Development
+        ),
+        DependencyGraph.ManifestEntry.fromJavaModule(
+          test.extra.randomized.package_,
+          scope = Scope.Development
+        ),
+        DependencyGraph.ManifestEntry.fromJavaModule(
+          benchmarks.package_,
+          scope = Scope.Development,
+          extraDependencies = benchmarks.package_.annotationProcessorsMvnDeps().map(_.toString)
+        )
+      )
+    )
   }
 
   def jvmVersion = Versions.jvmToolchain
@@ -129,10 +162,18 @@ object `package` extends JavaModule with SonatypeCentralPublishModule with Spotl
     )
   }
 
-  def publishVersion = Task {
-    releaseEnv().version.getOrElse("0.0.0-SNAPSHOT")
+  def releaseVersion = Task {
+    Task.env.get("RELEASE_VERSION")
   }
-  
+
+  def requireReleaseVersion = Task {
+    releaseVersion().getOrElse("RELEASE_VERSION is required but not set")
+  }
+
+  def publishVersion = Task {
+    releaseVersion().getOrElse("0.0.0-SNAPSHOT")
+  }
+
   def pomSettings = PomSettings(
     description = "A persistent collection library for Java 21+.",
     organization = "org.odenix",

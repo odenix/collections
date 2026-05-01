@@ -4,7 +4,7 @@
 - Treat the directory containing this `AGENTS.md` file as the repo root.
 - Put temporary files and scratch directories under `.agents/`, not in the repo root.
 
-- For Mill, use only the repo-relative `.agents/out` directory as the Mill output directory.
+- For local agent-run Mill commands, use only the repo-relative `.agents/out` directory as the Mill output directory.
 - In this repo, run Mill with `--no-daemon`.
 - Initialize the upstream source checkout with `MILL_OUTPUT_DIR=.agents/out ./mill --no-daemon initUpstream` on Unix-like shells or `$env:MILL_OUTPUT_DIR='.agents/out'; ./mill.bat --no-daemon initUpstream` in PowerShell.
 - Run Mill from the repo root with task names: `compile`, `build`, `test.compile`, `test`, `test.testOnly ...`, `test.extra.compile`, `test.extra`, `test.extra.testOnly ...`, or `test.extra.randomized`.

@@ -1,4 +1,4 @@
-package org.odenix.mill
+package org.odenix.mill.github
 
 import upickle.default.*
 
@@ -7,15 +7,15 @@ import java.net.{URI, URLEncoder}
 import java.nio.charset.StandardCharsets
 import scala.util.Using
 
-final case class GitHubRelease(
+final case class Release(
     id: Long,
     tag_name: String,
     name: String,
     upload_url: String
 ) derives Reader
 
-object GitHubRelease {
-  def upsert(repository: String, version: String, notes: String, token: String): GitHubRelease = {
+object Release {
+  def upsert(repository: String, version: String, notes: String, token: String): Release = {
     Using.resource(HttpClient.newHttpClient()) { client =>
       findByTag(client, repository, version, token) match {
         case Some(release) => update(client, repository, release.id, version, notes, token)
@@ -29,7 +29,7 @@ object GitHubRelease {
       repository: String,
       tagName: String,
       token: String
-  ): Option[GitHubRelease] = {
+  ): Option[Release] = {
     val uri = URI.create(s"https://api.github.com/repos/$repository/releases/tags/$tagName")
     val response =
       client.send(
@@ -51,7 +51,7 @@ object GitHubRelease {
       version: String,
       notes: String,
       token: String
-  ): GitHubRelease = {
+  ): Release = {
     val uri = URI.create(s"https://api.github.com/repos/$repository/releases")
     val response =
       client.send(
@@ -71,7 +71,7 @@ object GitHubRelease {
       version: String,
       notes: String,
       token: String
-  ): GitHubRelease = {
+  ): Release = {
     val uri = URI.create(s"https://api.github.com/repos/$repository/releases/$releaseId")
     val response =
       client.send(
@@ -84,9 +84,9 @@ object GitHubRelease {
     parseRelease(response.body(), s"updated release for tag $version")
   }
 
-  private def parseRelease(body: String, description: String): GitHubRelease = {
+  private def parseRelease(body: String, description: String): Release = {
     try {
-      read[GitHubRelease](body)
+      read[Release](body)
     } catch {
       case e: upickle.core.Abort =>
         sys.error(s"Could not parse GitHub $description: ${e.getMessage}")
