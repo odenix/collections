@@ -1,4 +1,5 @@
 //| mill-jvm-version: temurin:21
+//noinspection TypeAnnotation
 package build
 
 import mill.*
@@ -10,7 +11,11 @@ import mill.javalib.spotless.{Format, SpotlessModule}
 import org.odenix.mill.*
 import org.odenix.mill.github.*
 
-object `package` extends JavaModule with SonatypeCentralPublishModule with SpotlessModule with DependencyGraphModule {
+object `package` extends JavaModule
+    with SonatypeCentralPublishModule
+    with SpotlessModule
+    with DependencyGraphModule
+    with ReleaseModule {
   def build(evaluator: Evaluator) = Task.Command(exclusive = true) {
     runTasks(evaluator, "spotlessCheck", "test", "test.extra")
   }
@@ -24,88 +29,9 @@ object `package` extends JavaModule with SonatypeCentralPublishModule with Spotl
   def sonatypeCentralGpgArgs = Task {
     "--local-user,FD2EB321DE41B4C4"
   }
-  
+
+  // release to staging and promote via website
   def sonatypeCentralShouldRelease = Task { false }
-  
-  def publishSonatypeCentralIfMissing(evaluator: Evaluator) = Task.Command(exclusive = true) {
-    val version = requireReleaseVersion()
-    val pomUrl = MavenCentral.createPomUrl("org.odenix", artifactName(), version)
-
-    MavenCentral.getArtifactState(pomUrl) match {
-      case MavenCentral.ArtifactState.Present =>
-        Task.log.info(s"Skipping Sonatype publish: $pomUrl already exists")
-      case MavenCentral.ArtifactState.Missing =>
-        runTasks(evaluator, "publishSonatypeCentral")
-      case MavenCentral.ArtifactState.Unknown(status, body) =>
-        sys.error(s"Could not determine whether $pomUrl exists: HTTP $status\n$body")
-    }
-  }
-
-  def githubEnv = Task.Input {
-    GitHubEnv(Task.env)
-  }
-
-  def changelog = Task.Source {
-    moduleDir / "CHANGELOG.md"
-  }
-
-  def extractReleaseNotes = Task {
-    val version = requireReleaseVersion()
-    val changelogPath = changelog().path
-    val notes = ReleaseNotes.fromChangelog(changelogPath, version)
-    val notesPath = Task.dest / "release-notes.md"
-    os.write.over(notesPath, notes)
-    PathRef(notesPath)
-  }
-
-  def printReleaseNotes() = Task.Command {
-    println(os.read(extractReleaseNotes().path))
-  }
-
-  def uploadGitHubRelease() = Task.Command {
-    val env = githubEnv()
-    val notes = os.read(extractReleaseNotes().path)
-
-    Release.upsert(
-      repository = env.requireRepository(),
-      version = requireReleaseVersion(),
-      notes = notes,
-      token = env.requireToken()
-    )
-    println(s"Uploaded GitHub release notes for ${env.requireRepository()}@${requireReleaseVersion()}")
-  }
-
-  def githubDependencyGraph = Task {
-    import DependencyGraph.Scope
-
-    DependencyGraph.fromEnv(
-      githubEnv(),
-      manifests = Seq(
-        DependencyGraph.ManifestEntry.fromJavaModule(
-          this,
-          scope = Scope.Runtime,
-          name = Some("Odenix Collections")
-        ),
-        DependencyGraph.ManifestEntry.fromJavaModule(
-          test.package_,
-          scope = Scope.Development
-        ),
-        DependencyGraph.ManifestEntry.fromJavaModule(
-          test.extra.package_,
-          scope = Scope.Development
-        ),
-        DependencyGraph.ManifestEntry.fromJavaModule(
-          test.extra.randomized.package_,
-          scope = Scope.Development
-        ),
-        DependencyGraph.ManifestEntry.fromJavaModule(
-          benchmarks.package_,
-          scope = Scope.Development,
-          extraDependencies = benchmarks.package_.annotationProcessorsMvnDeps().map(_.toString)
-        )
-      )
-    )
-  }
 
   def jvmVersion = Versions.jvmToolchain
   def artifactName = "odenix-collections"
@@ -162,16 +88,8 @@ object `package` extends JavaModule with SonatypeCentralPublishModule with Spotl
     )
   }
 
-  def releaseVersion = Task {
-    Task.env.get("RELEASE_VERSION")
-  }
-
-  def requireReleaseVersion = Task {
-    releaseVersion().getOrElse("RELEASE_VERSION is required but not set")
-  }
-
-  def publishVersion = Task {
-    releaseVersion().getOrElse("0.0.0-SNAPSHOT")
+  def publishVersion = Task.Input {
+    BuildVariable("RELEASE_VERSION").get(Task.env).getOrElse("0.0.0-SNAPSHOT")
   }
 
   def pomSettings = PomSettings(
@@ -228,6 +146,38 @@ object `package` extends JavaModule with SonatypeCentralPublishModule with Spotl
         includes = testExtraFiles,
         excludes = moduleAndPackageInfoFiles,
       ),
+    )
+  }
+
+  def githubDependencyGraph = Task {
+    import DependencyGraph.Scope
+
+    DependencyGraph.fromEnv(
+      Task.env,
+      manifests = Seq(
+        DependencyGraph.ManifestEntry.fromJavaModule(
+          this,
+          scope = Scope.Runtime,
+          name = Some("Odenix Collections")
+        ),
+        DependencyGraph.ManifestEntry.fromJavaModule(
+          test.package_,
+          scope = Scope.Development
+        ),
+        DependencyGraph.ManifestEntry.fromJavaModule(
+          test.extra.package_,
+          scope = Scope.Development
+        ),
+        DependencyGraph.ManifestEntry.fromJavaModule(
+          test.extra.randomized.package_,
+          scope = Scope.Development
+        ),
+        DependencyGraph.ManifestEntry.fromJavaModule(
+          benchmarks.package_,
+          scope = Scope.Development,
+          extraDependencies = benchmarks.package_.annotationProcessorsMvnDeps().map(_.toString)
+        )
+      )
     )
   }
 

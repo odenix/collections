@@ -1,11 +1,18 @@
 package org.odenix.mill
 
+import scala.jdk.CollectionConverters.*
+import scala.jdk.StreamConverters.*
+
 object ReleaseNotes {
   def fromChangelog(changelogPath: os.Path, version: String): String = {
-    val lines = os.read.lines(changelogPath)
+    fromChangelog(os.read(changelogPath), version, changelogPath.toString)
+  }
+
+  def fromChangelog(changelog: String, version: String, displayName: String = "changelog"): String = {
+    val lines = changelog.lines().toScala(Seq)
     val start = lines.indexWhere(line => extractVersion(line).contains(version))
     if (start == -1) {
-      sys.error(s"No release notes found for $version in $changelogPath")
+      sys.error(s"No release notes found for $version in $displayName")
     }
     val end = lines.indexWhere(line => extractVersion(line).isDefined, start + 1) match {
       case -1 => lines.length
@@ -22,7 +29,7 @@ object ReleaseNotes {
         .mkString("\n")
 
     if (text.isBlank) {
-      sys.error(s"No release notes found for $version in $changelogPath")
+      sys.error(s"No release notes found for $version in $displayName")
     }
 
     text

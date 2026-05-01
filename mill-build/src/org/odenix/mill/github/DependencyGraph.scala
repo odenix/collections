@@ -9,15 +9,6 @@ import java.net.http.{HttpClient, HttpRequest, HttpResponse}
 import java.time.Instant
 import scala.util.Using
 
-trait DependencyGraphModule extends Module {
-  def githubDependencyGraph: Task[DependencyGraph]
-
-  def submitDependencyGraph() = Task.Command {
-    DependencyGraph.submit(GitHubEnv(Task.env), githubDependencyGraph())
-    println("Submitted GitHub dependency graph snapshot")
-  }
-}
-
 final case class DependencyGraph(
     version: Int,
     sha: String,
@@ -40,14 +31,14 @@ object DependencyGraph {
   }
 
   def fromEnv(
-               env: GitHubEnv,
+               env: Map[String, String],
                manifests: Seq[ManifestEntry],
                detector: Detector = Detector.Default
   ): DependencyGraph = {
     DependencyGraph(
       version = 0,
-      sha = env.requireSha(),
-      ref = env.requireRef(),
+      sha = GitHubEnv.Sha.require(env),
+      ref = GitHubEnv.Ref.require(env),
       job = Job.fromEnv(env),
       detector = detector,
       scanned = Instant.now().toString,
@@ -128,16 +119,16 @@ object DependencyGraph {
   ) derives ReadWriter
 
   object Job {
-    def fromEnv(env: GitHubEnv): Job = {
+    private[github] def fromEnv(env: Map[String, String]): Job = {
       val runUrl = for {
-        serverUrl <- env.serverUrl
-        repository <- env.repository
-        runId <- env.runId
+        serverUrl <- GitHubEnv.ServerUrl.get(env)
+        repository <- GitHubEnv.Repository.get(env)
+        runId <- GitHubEnv.RunId.get(env)
       } yield s"$serverUrl/$repository/actions/runs/$runId"
 
       Job(
-        id = env.runId.getOrElse("local"),
-        correlator = Seq(env.workflow, env.job).flatten.mkString(" "),
+        id = GitHubEnv.RunId.get(env).getOrElse("local"),
+        correlator = Seq(GitHubEnv.Workflow.get(env), GitHubEnv.Job.get(env)).flatten.mkString(" "),
         html_url = runUrl
       )
     }
@@ -172,10 +163,10 @@ object DependencyGraph {
     }
   }
 
-  def submit(githubEnv: GitHubEnv, graph: DependencyGraph): Unit = {
+  def submit(env: Map[String, String], graph: DependencyGraph): Unit = {
     submit(
-      repository = githubEnv.requireRepository(),
-      token = githubEnv.requireToken(),
+      repository = GitHubEnv.Repository.require(env),
+      token = GitHubEnv.Token.require(env),
       graph = graph
     )
   }

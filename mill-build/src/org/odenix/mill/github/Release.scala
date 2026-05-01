@@ -1,10 +1,11 @@
 package org.odenix.mill.github
 
 import upickle.default.*
+import mill.*
+import org.odenix.mill.ReleaseNotes
 
 import java.net.http.{HttpClient, HttpRequest, HttpResponse}
-import java.net.{URI, URLEncoder}
-import java.nio.charset.StandardCharsets
+import java.net.URI
 import scala.util.Using
 
 final case class Release(
