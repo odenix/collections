@@ -2,6 +2,10 @@ package build
 
 import mill._
 import mill.javalib.DepSyntax
+import mill.javalib.publish.*
+import mill.javalib.spotless.Format
+import org.odenix.mill.JavadocOptions
+import org.odenix.mill.JavacOptions
 
 object Versions {
   val jvmToolchain = "temurin:25"
@@ -13,4 +17,76 @@ object Deps {
   val junit = mvn"org.junit.jupiter:junit-jupiter:6.0.3"
   val jmhCore = mvn"org.openjdk.jmh:jmh-core:1.37"
   val jmhGeneratorAnnprocess = mvn"org.openjdk.jmh:jmh-generator-annprocess:1.37"
+}
+
+object JavacConfig {
+  val options = JavacOptions.empty
+    .release(Versions.jvmTarget)
+    .proc("none")
+}
+
+object Publishing {
+  def pomSettings = PomSettings(
+    description = "A persistent collection library for Java 21+.",
+    organization = "org.odenix",
+    url = "https://github.com/odenix/collections",
+    licenses = Seq(License.`Apache-2.0`),
+    versionControl = VersionControl.github("odenix", "collections"),
+    developers = Seq(Developer("odenix", "Odenix", "https://github.com/odenix"))
+  )
+}
+
+object JavadocConfig {
+  val options = JavadocOptions.empty
+    .protectedMembers()
+    .xdoclint("all", "-missing")
+    .title("Odenix Collections")
+    .bottom("Copyright 2026 The Odenix Collections Authors")
+    .links(
+      "https://docs.oracle.com/en/java/javase/21/docs/api/",
+      "https://jspecify.dev/docs/api/"
+    )
+}
+
+object Spotless {
+  def formats: Seq[Format] = Seq(
+    Format(
+      steps = Seq(
+        Format.RemoveUnusedImports(),
+        Format.ImportOrder(Seq("java", "javax", "org", ""))
+      ),
+      includes = allJavaFiles,
+    ),
+    Format(
+      steps = Seq(Format.LicenseHeader(delimiter, Format.ContentOrFile(content =
+        """/*
+          | * SPDX-License-Identifier: Apache-2.0
+          | * Copyright 2020 JetBrains s.r.o.
+          | * Copyright 2026 The Odenix Collections Authors
+          | */""".stripMargin))),
+      includes = allJavaFiles,
+      excludes = moduleAndPackageInfoFiles ++ testExtraFiles,
+    ),
+    Format(
+      steps = Seq(Format.LicenseHeader(delimiter, Format.ContentOrFile(content =
+        """/*
+          | * SPDX-License-Identifier: Apache-2.0
+          | * Copyright 2026 The Odenix Collections Authors
+          | */""".stripMargin))),
+      includes = testExtraFiles,
+      excludes = moduleAndPackageInfoFiles,
+    ),
+  )
+
+  private val delimiter = raw"(?m)^package\b"
+  private val allJavaFiles = Seq(
+    raw"regex:src[\\/].*\.java",
+    raw"regex:test[\\/].*\.java",
+    raw"regex:benchmarks[\\/].*\.java"
+  )
+  private val moduleAndPackageInfoFiles = Seq(
+    raw"regex:.*package-info\.java",
+    raw"regex:.*module-info\.java"
+  )
+  private val testExtraFiles = Seq(raw"regex:test[\\/]extra[\\/].*\.java")
 }

@@ -3,20 +3,7 @@ package build.test.extra.randomized
 import java.time.Instant
 import mill._
 
-object RandomizedTest {
-  // first deterministic seed included in the run
-  val startSeed = 0
-  // number of deterministic seeds to execute
-  val seedCount = 10000
-  // operation count for each seed unless a test provides a smaller default
-  val operations = 3000
-  // number of seeds grouped into one JUnit parameterized invocation
-  val chunkSize = 100
-  // seed-progress logging interval; use 0 to disable progress logs
-  val progressEvery = 100
-}
-
-object `package` extends build.CollectionsTests {
+object `package` extends build.JUnitTests {
   def forkArgs = Task {
     val settings = randomizedSettings(Task.dest)
     super.forkArgs() ++ Seq(

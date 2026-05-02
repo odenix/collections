@@ -4,10 +4,9 @@ package build
 
 import mill.*
 import mill.api.Evaluator
-import mill.api.daemon.SelectMode
 import mill.javalib.*
 import mill.javalib.publish.*
-import mill.javalib.spotless.{Format, SpotlessModule}
+import mill.javalib.spotless.SpotlessModule
 import org.odenix.mill.*
 import org.odenix.mill.github.*
 
@@ -16,22 +15,27 @@ object `package` extends JavaModule
     with SpotlessModule
     with DependencyGraphModule
     with ReleaseModule {
+
+  trait JUnitTests extends JavaTests with TestModule.Junit6 {
+    def mvnDeps = super.mvnDeps() ++ Seq(Deps.junit)
+    def forkArgs = super.forkArgs() ++ Seq("-ea")
+    // workaround: use a separate JVM per test class
+    // https://github.com/com-lihaoyi/mill/issues/7039
+    def testForkGrouping = Task { discoveredTestClasses().map(Seq(_)) }
+  }
+
   def build(evaluator: Evaluator) = Task.Command(exclusive = true) {
-    runTasks(evaluator, "spotlessCheck", "test", "test.extra")
+    Tasks.run(evaluator, "spotlessCheck", "test", "test.extra")
   }
 
   def devBuild(evaluator: Evaluator) = Task.Command(exclusive = true) {
-    runTasks(evaluator, "spotlessCheck", "test", "test.extra", "docJar", "publishM2Local")
-  }
-
-  //noinspection ScalaDeprecation
-  // https://github.com/com-lihaoyi/mill/issues/7052
-  def sonatypeCentralGpgArgs = Task {
-    "--local-user,FD2EB321DE41B4C4"
+    Tasks.run(evaluator, "spotlessCheck", "test", "test.extra", "docJar", "publishM2Local")
   }
 
   // release to staging and promote via website
   def sonatypeCentralShouldRelease = Task { false }
+  //noinspection ScalaDeprecation (https://github.com/com-lihaoyi/mill/issues/7052)
+  def sonatypeCentralGpgArgs = Task { "--local-user,FD2EB321DE41B4C4" }
 
   def jvmVersion = Versions.jvmToolchain
   def artifactName = "odenix-collections"
@@ -40,44 +44,33 @@ object `package` extends JavaModule
   def mvnDeps = super.mvnDeps() ++ Seq(
     Deps.jspecify
   )
-  
-  trait CollectionsTests extends JavaTests with TestModule.Junit6 {
-    def mvnDeps = super.mvnDeps() ++ Seq(
-      Deps.junit
-    )
-
-    def forkArgs = super.forkArgs() ++ Seq("-ea")
-  }
 
   def javacOptions = Task {
-    Seq(
-      "--release",
-      Versions.jvmTarget,
-      "-proc:none",
-      "--module-path",
-      resolvedMvnDeps().map(_.path.toString).mkString(java.io.File.pathSeparator)
-    )
+    JavacConfig.options
+      .modulePath(resolvedMvnDeps().map(_.path))
+      .render()
   }
 
   def javadocOptions = Task {
-    Javadoc.options(
-      baseOptions = super.javadocOptions(), 
-      moduleName = moduleName, 
-      sourceDirs = allSources().map(_.path).filter(os.isDir(_)), 
-      modulePath = resolvedMvnDeps().iterator.map(_.path).filter(_.ext != "pom").toSeq, 
-      doclint = Seq("all", "-missing"), 
-      docTitle = "Odenix Collections", 
-      windowTitle = "Odenix Collections", 
-      bottom = "Copyright 2026 The Odenix Collections Authors", 
-      links = Seq(
-        "https://docs.oracle.com/en/java/javase/21/docs/api/",
-        "https://jspecify.dev/docs/api/"
-      )
-    )
+    JavadocConfig.options
+      .module(moduleName)
+      .sourceDirs(allSources().map(_.path).filter(os.isDir(_)))
+      .modulePath(resolvedMvnDeps().iterator.map(_.path).filter(_.ext != "pom").toSeq)
+      .render(super.javadocOptions())
   }
 
-  // Mill's default javadocGenerated can't handle Java modules
-  override def javadocGenerated = Task[PathRef] {
+  def publishVersion = Task.Input {
+    BuildVariable("RELEASE_VERSION").get(Task.env).getOrElse("0.0.0-SNAPSHOT")
+  }
+
+  def pomSettings = Publishing.pomSettings
+
+  def initUpstream() = Task.Command {
+    os.proc("git", "submodule", "update", "--init", "--recursive")
+      .call(cwd = os.pwd)
+  }
+
+  def javadocGenerated = Task[PathRef] {
     Javadoc.generate(
       options = javadocOptions(),
       outDir = Task.dest,
@@ -88,69 +81,17 @@ object `package` extends JavaModule
     )
   }
 
-  def publishVersion = Task.Input {
-    BuildVariable("RELEASE_VERSION").get(Task.env).getOrElse("0.0.0-SNAPSHOT")
-  }
-
-  def pomSettings = PomSettings(
-    description = "A persistent collection library for Java 21+.",
-    organization = "org.odenix",
-    url = "https://github.com/odenix/collections",
-    licenses = Seq(License.`Apache-2.0`),
-    versionControl = VersionControl.github("odenix", "collections"),
-    developers = Seq(Developer("odenix", "Odenix", "https://github.com/odenix"))
-  )
-
-  def initUpstream() = Task.Command {
-    os.proc("git", "submodule", "update", "--init", "--recursive")
-      .call(cwd = os.pwd)
-  }
-
   def spotlessCheck() = Task.Command {
     spotless(mainargs.Flag(true))()
   }
 
-  override def spotlessFormats = Task {
-    val delimiter = raw"(?m)^package\b"
-    val allJavaFiles = Seq(
-      raw"regex:src[\\/].*\.java",
-      raw"regex:test[\\/].*\.java",
-      raw"regex:benchmarks[\\/].*\.java"
-    )
-    val moduleAndPackageInfoFiles = Seq(raw"regex:.*package-info\.java", raw"regex:.*module-info\.java")
-    val testExtraFiles = Seq(raw"regex:test[\\/]extra[\\/].*\.java")
-    Seq(
-      Format(
-        steps = Seq(
-          Format.RemoveUnusedImports(),
-          Format.ImportOrder(Seq("java", "javax", "org", ""))
-        ),
-        includes = allJavaFiles,
-      ),
-      Format(
-        steps = Seq(Format.LicenseHeader(delimiter, Format.ContentOrFile(content =
-          """/*
-            | * SPDX-License-Identifier: Apache-2.0
-            | * Copyright 2020 JetBrains s.r.o.
-            | * Copyright 2026 The Odenix Collections Authors
-            | */""".stripMargin))),
-        includes = allJavaFiles,
-        excludes = moduleAndPackageInfoFiles ++ testExtraFiles,
-      ),
-      Format(
-        steps = Seq(Format.LicenseHeader(delimiter, Format.ContentOrFile(content =
-          """/*
-            | * SPDX-License-Identifier: Apache-2.0
-            | * Copyright 2026 The Odenix Collections Authors
-            | */""".stripMargin))),
-        includes = testExtraFiles,
-        excludes = moduleAndPackageInfoFiles,
-      ),
-    )
+  def spotlessFormats = Task {
+    Spotless.formats
   }
 
   def githubDependencyGraph = Task {
     import DependencyGraph.Scope
+    import DependencyGraph.ManifestEntry
 
     DependencyGraph.fromEnv(
       Task.env,
@@ -160,29 +101,24 @@ object `package` extends JavaModule
           scope = Scope.Runtime,
           name = Some("Odenix Collections")
         ),
-        DependencyGraph.ManifestEntry.fromJavaModule(
+        ManifestEntry.fromJavaModule(
           test.package_,
           scope = Scope.Development
         ),
-        DependencyGraph.ManifestEntry.fromJavaModule(
+        ManifestEntry.fromJavaModule(
           test.extra.package_,
           scope = Scope.Development
         ),
-        DependencyGraph.ManifestEntry.fromJavaModule(
+        ManifestEntry.fromJavaModule(
           test.extra.randomized.package_,
           scope = Scope.Development
         ),
-        DependencyGraph.ManifestEntry.fromJavaModule(
+        ManifestEntry.fromJavaModule(
           benchmarks.package_,
           scope = Scope.Development,
           extraDependencies = benchmarks.package_.annotationProcessorsMvnDeps().map(_.toString)
         )
       )
     )
-  }
-
-  private def runTasks(evaluator: Evaluator, tasks: String*): Unit = {
-    val result = evaluator.evaluate(tasks, SelectMode.Multi).get
-    result.values.get
   }
 }

@@ -8,37 +8,6 @@ import mill.util.Jvm
   * --module / --module-source-path mode, not by passing individual source files.
   */
 object Javadoc {
-  def options(
-    baseOptions: Seq[String],
-    moduleName: String,
-    sourceDirs: Seq[Any],
-    modulePath: Seq[Any],
-    doclint: Seq[String],
-    docTitle: String,
-    windowTitle: String,
-    bottom: String,
-    links: Seq[String],
-  ): Seq[String] = {
-    val sourcePath = sourceDirs.mkString(java.io.File.pathSeparator)
-    val modulePathOptions =
-      if (modulePath.isEmpty) Seq.empty
-      else Seq("--module-path", modulePath.mkString(java.io.File.pathSeparator))
-    val linkOptions = links.flatMap(link => Seq("-link", link))
-
-    baseOptions ++
-      Seq(
-        "-protected",
-        s"-Xdoclint:${doclint.mkString(",")}",
-        "-doctitle", docTitle,
-        "-windowtitle", windowTitle,
-        "-bottom", bottom,
-        "--module", moduleName,
-        "--module-source-path", s"$moduleName=$sourcePath",
-      ) ++
-      linkOptions ++
-      modulePathOptions
-  }
-
   def generate(
       options: Seq[String],
       outDir: os.Path,

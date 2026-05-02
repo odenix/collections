@@ -2,10 +2,4 @@ package build.test
 
 import mill._
 
-object `package` extends build.CollectionsTests {
-  // Work around Mill's shared test-class queue duplicating the first class across forked
-  // workers on Windows. One class per group keeps forked execution without shared claims.
-  def testForkGrouping = Task {
-    discoveredTestClasses().map(Seq(_))
-  }
-}
+object `package` extends build.JUnitTests

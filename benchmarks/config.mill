@@ -1,0 +1,89 @@
+package build.benchmarks
+
+// Mirrors upstream benchmark selection/config. Update only while porting upstream changes.
+object UpstreamBenchmarkSuites {
+  val fastIncludes = Seq(
+    "benchmarks.immutableList.Add.addLast$",
+    "benchmarks.immutableList.Get.getByIndex$",
+    "benchmarks.immutableList.Iterate.firstToLast$",
+    "benchmarks.immutableList.Remove.removeLast$",
+    "benchmarks.immutableList.Set.setByIndex$",
+    "benchmarks.immutableMap.Get.get$",
+    "benchmarks.immutableMap.Iterate.iterateKeys$",
+    "benchmarks.immutableMap.Put.put$",
+    "benchmarks.immutableMap.Remove.remove$",
+    "benchmarks.immutableSet.Add.add$",
+    "benchmarks.immutableSet.Contains.contains$",
+    "benchmarks.immutableSet.Iterate.iterate$",
+    "benchmarks.immutableSet.Remove.remove$"
+  )
+
+  val fastArgs = Seq(
+    "-wi",
+    "7",
+    "-i",
+    "7",
+    "-w",
+    "500ms",
+    "-r",
+    "500ms",
+    "-p",
+    "size=1000",
+    "-p",
+    "hashCodeType=random",
+    "-bm",
+    "thrpt",
+    "-tu",
+    "s",
+    "-f",
+    "1"
+  )
+
+  val fullIncludes = Seq("benchmarks.*")
+
+  val fullArgs = Seq(
+    "-wi",
+    "7",
+    "-i",
+    "7",
+    "-w",
+    "500ms",
+    "-r",
+    "500ms",
+    "-p",
+    "size=1,10,100,1000,10000",
+    "-p",
+    "immutablePercentage=0",
+    "-p",
+    "hashCodeType=random,collision",
+    "-f",
+    "1"
+  )
+}
+
+object LocalBenchmarkSuites {
+  val smokeIncludes = Seq(
+    "benchmarks.immutableList.Get.getByIndex$",
+    "benchmarks.immutableMap.Get.get$",
+    "benchmarks.immutableSet.Contains.contains$"
+  )
+
+  val smokeArgs = Seq(
+    "-wi",
+    "0",
+    "-i",
+    "1",
+    "-r",
+    "100ms",
+    "-p",
+    "size=10",
+    "-p",
+    "hashCodeType=random",
+    "-bm",
+    "thrpt",
+    "-tu",
+    "s",
+    "-f",
+    "1"
+  )
+}
