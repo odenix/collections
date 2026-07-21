@@ -18,6 +18,6 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: coursier/cache-action@90c37294538be80a558fd665531fcdc2b467b475 # v8
       - run: ./mill devBuild
